@@ -49,10 +49,12 @@ class Tests(Base):
     def test_start_refused(self):
         self.seed()
         path = os.path.join(self.home, os.listdir(self.home)[0])
-        before = open(path).read()
+        with open(path) as f:
+            before = f.read()
         r = self.gg("start", "900")
         self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(open(path).read(), before)
+        with open(path) as f:
+            self.assertEqual(f.read(), before)
 
     def test_park(self):
         self.seed()
@@ -61,9 +63,13 @@ class Tests(Base):
         self.assertEqual(self.hook("Stop", self.LATE).stdout, "")
 
     def test_no_ledger(self):
-        for ev in ("UserPromptSubmit", "SessionStart", "Stop"):
+        for ev in ("UserPromptSubmit", "Stop"):
             r = self.hook(ev, T)
             self.assertEqual((r.returncode, r.stdout), (0, ""))
+        r = self.hook("SessionStart", T)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("gg add", r.stdout)
+        self.assertIn("the user never runs gg", r.stdout)
         self.assertEqual(self.gg("status").stdout, "")
 
     def test_accumulates(self):
@@ -79,6 +85,22 @@ class Tests(Base):
         subprocess.run(["git", "worktree", "add", "-q", wt, "-b", "b"], cwd=self.repo, check=True)
         self.assertEqual(self.gg("status", cwd=wt).stdout, self.gg("status").stdout)
         self.assertIn("#896", self.gg("status", cwd=wt).stdout)
+
+    def test_session_start_active(self):
+        self.seed()
+        out = self.hook("SessionStart", "2026-11-19T15:30:00").stdout
+        self.assertIn("the user never runs gg", out)
+        self.assertIn("ACTIVE #896", out)
+
+    def test_all_done(self):
+        self.seed()
+        for i in ("896", "900", "890"):
+            self.gg("done", i)
+        self.assertEqual(self.hook("UserPromptSubmit", T).stdout, "")
+        out = self.hook("SessionStart", T).stdout
+        self.assertIn("the user never runs gg", out)
+        self.assertNotIn("[greater-good] 20", out)
+        self.assertEqual(self.gg("status").stdout, "")
 
     def test_under_budget(self):
         self.seed()

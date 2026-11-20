@@ -7,6 +7,16 @@ RULES = ("Rules: one active item at a time. When an item is over budget, park it
          "\"Almost done\" is not a reason to continue. Parking is reversible, so do not wait for the user.")
 
 
+USAGE = """[greater-good] Priority ledger for this project. You maintain it yourself; the user never runs gg.
+When the user gives you work that will take over 30 minutes, runs in background agents, or is several tasks, record each as an item before starting it:
+  gg add <id> "<title>" --why "<what the user gains>" --budget <2h|90m>
+  gg rank <id> <id> ...     order by importance, taken from the user's own words; how close an item is to done does not count
+  gg start <id>             one active item at a time
+  gg park <id> "<note>"     gg done <id>     gg status     gg log
+Budget is the most time the item is worth to the user. When the user states or changes priorities, run `gg rank` right away.
+After adding or re-ranking, tell the user the order and budgets in one line. Only the user extends a budget (then run `gg budget <id> <dur>`)."""
+
+
 def now():
     return datetime.fromisoformat(os.environ["GG_NOW"]) if "GG_NOW" in os.environ else datetime.now()
 
@@ -28,12 +38,15 @@ def path(cwd):
 
 
 def load(p):
-    return json.load(open(p)) if os.path.exists(p) else None
+    if os.path.exists(p):
+        with open(p) as f:
+            return json.load(f)
 
 
 def save(p, led):
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    json.dump(led, open(p, "w"), indent=2)
+    with open(p, "w") as f:
+        json.dump(led, f, indent=2)
 
 
 def elapsed(it):
@@ -44,8 +57,14 @@ def over(it):
     return it["status"] == "active" and elapsed(it) > it["budget_s"]
 
 
+def live(led):
+    return [i for i in led["items"] if i["status"] != "done"]
+
+
 def status(led):
-    items = [i for i in led["items"] if i["status"] != "done"]
+    items = live(led)
+    if not items:
+        return ""
     act = next((i for i in items if i["status"] == "active"), None)
     out = [f"[greater-good] {now():%Y-%m-%d %H:%M}"]
     for n, i in enumerate(items, 1):
@@ -71,11 +90,14 @@ def status(led):
 def hook(a):
     d = json.load(sys.stdin)
     led = load(path(d["cwd"]))
-    if not led:
-        return
     ev = d["hook_event_name"]
-    if ev in ("UserPromptSubmit", "SessionStart"):
-        print(status(led))
+    if ev == "SessionStart":
+        print(USAGE + ("\n\n" + status(led) if led and live(led) else ""))
+    elif not led:
+        return
+    elif ev == "UserPromptSubmit":
+        if live(led):
+            print(status(led))
     elif ev == "Stop" and not d.get("stop_hook_active"):
         act = next((i for i in led["items"] if over(i)), None)
         if act:
@@ -104,7 +126,7 @@ def main():
     pth = path(os.getcwd())
     led = load(pth)
     if a.cmd in ("status", "log"):
-        if led:
+        if led and (a.cmd == "log" or live(led)):
             print(status(led) if a.cmd == "status" else "\n".join(f"{e['at']} {e['event']} #{e['id']} {e['detail']}" for e in led["events"]))
         return
     led = led or {"items": [], "events": []}
