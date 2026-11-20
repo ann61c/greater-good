@@ -1,0 +1,235 @@
+.TH GG 1 2026-11-20
+.SH NAME
+gg \- a priority ledger and a budget clock for coding agents
+.SH SYNOPSIS
+.B gg
+.I command
+.RI [ args ]
+.PP
+.B gg
+.RB [ help | \-h | \-\-help ]
+.SH DESCRIPTION
+.B gg
+keeps a ranked ledger of the big pieces of work a coding agent has been given.
+Each item has an id, a title, a reason (what the user gains),
+a time budget, and a status:
+.BR queued ,
+.BR active ,
+.B parked
+or
+.BR done .
+One item is active at a time.
+Time spent on the active item is measured by
+.B gg
+outside the model.
+.PP
+The agent maintains the ledger itself through Claude Code hooks.
+The user reads the ranking in the status line and corrects it with one sentence.
+.PP
+Each git repository has its own ledger.
+Items that are not done are called open.
+Rank is the position among open items, starting at 1.
+.PP
+Durations are written as 2h, 90m or 1h30m.
+Any number followed by
+.B h
+or
+.B m
+counts, and the parts add up.
+.PP
+With no arguments,
+.B gg
+prints its help text.
+.SH COMMANDS
+.TP
+.BI "gg add " id " title " "\-\-why" " text " "\-\-budget" " dur"
+Add an item at the bottom of the ranking with status queued.
+The id, the title,
+.B \-\-why
+and
+.B \-\-budget
+are all required.
+.TP
+.BI "gg rank " "id id ..."
+Move the listed items to the top of the ranking, in the order given.
+The remaining items keep their relative order below them.
+An unknown id is an error.
+.TP
+.BI "gg start " id
+Set the item active and start its clock.
+It fails if another item is already active.
+.TP
+.BI "gg park " "id note"
+Stop the clock and set the item to parked.
+The time spent so far is kept, and the note is stored as a hand-over.
+Starting the item again resumes from the time already spent.
+.TP
+.BI "gg done " id
+Close the item.
+It no longer appears in the ranking.
+If the item was active, its clock stops.
+.TP
+.BI "gg budget " "id dur"
+Set the item's budget.
+.TP
+.B gg status
+Print what the agent sees: a header with the time,
+one entry per open item in rank order,
+a warning when an unstarted queued item outranks the active one,
+or the next item by rank when nothing is active,
+and the rules.
+An active item shows time spent against budget, and
+.B OVER BUDGET
+with the overrun when the budget is exceeded.
+Prints nothing when there are no open items.
+.TP
+.RB "gg line [" dir ]
+Print the status line row.
+With
+.I dir
+it reads the ledger of the repository containing that directory
+instead of the current one.
+See
+.BR "STATUS LINE" .
+.TP
+.B gg log
+Print the history, one line per event: time, event name, item id and detail.
+Events are add, rank, start, park, done and budget.
+.TP
+.B gg hook
+Claude Code hook.
+Reads the event JSON on stdin.
+See
+.BR HOOKS .
+.TP
+.B gg help
+Print the help text.
+.TP
+.B gg man
+Print this manual page as roff on stdout.
+.SH HOOKS
+.B gg hook
+reads a JSON object on stdin and uses the fields
+.IR hook_event_name ,
+.I cwd
+and
+.IR stop_hook_active .
+The ledger is the one for the repository containing
+.IR cwd .
+.TP
+.B SessionStart
+Prints the instructions that tell the agent how to keep the ledger.
+If the repository has open items, it then prints the status.
+.TP
+.B UserPromptSubmit
+Prints the status when there are open items.
+Prints nothing when there is no ledger or no open item.
+.TP
+.B Stop
+If an active item is over budget,
+prints a JSON object on stdout that blocks the agent from ending its turn:
+.RS
+.PP
+.nf
+{"decision":"block","reason":"#<id> <title> is over budget: ..."}
+.fi
+.PP
+The reason tells the agent to commit work in progress, run
+.B gg park
+on the item, and start the top-ranked queued item.
+It also says to run
+.B gg budget
+instead if the user explicitly extended the budget.
+.PP
+When
+.I stop_hook_active
+is true, the hook prints nothing and the agent may stop.
+It also prints nothing when there is no ledger or no item is over budget.
+.RE
+.SH STATUS LINE
+.B gg line
+prints one row with the open items in rank order, separated by
+.RB "\(dq\ \[u00B7]\ \(dq" .
+.PP
+Each entry starts with the rank number, then
+.BI # id
+and the title cut at 20 characters.
+.IP \(bu 2
+Queued items are plain:
+.BR "2 #deps Bump dependencies" .
+.IP \(bu 2
+The active item is bold, with
+.B \[u25B6]
+after the rank number, followed by time spent and budget:
+.BR "2\[u25B6] #deps Bump dependencies 40m/2h" .
+.IP \(bu 2
+An active item over budget is bold red and ends with
+.BR OVER .
+.IP \(bu 2
+Parked items are dimmed and end with
+.BR (parked) .
+.PP
+The output is empty when there are no open items.
+.SH ENVIRONMENT
+.TP
+.B GG_HOME
+Directory that holds the ledgers.
+Defaults to
+.IR ~/.greater\-good .
+.TP
+.B GG_NOW
+A fixed current time in the form
+.BR 2006\-01\-02T15:04:05 ,
+in local time.
+Tests use it to control the clock.
+.SH FILES
+.TP
+.I ~/.greater\-good/<repo path with / replaced by \->.json
+The ledger of one git repository, as JSON.
+Git worktrees share the ledger of their main repository.
+.SH EXIT STATUS
+.B gg
+exits 0 on success and 1 on error, with a message on stderr.
+.B gg hook
+always exits 0 and expresses a block as JSON on stdout.
+.SH EXAMPLES
+A short session:
+.PP
+.nf
+.RS
+gg add checkout "Fix checkout crash" \-\-why "users cannot pay" \-\-budget 4h
+gg add deps "Bump dependencies" \-\-why "tidier lockfile" \-\-budget 1h
+gg rank checkout deps
+gg start checkout
+gg park checkout "payment form fixed, tests missing"
+gg start deps
+gg done deps
+.RE
+.fi
+.PP
+Hooks in
+.IR ~/.claude/settings.json ,
+using the full path from
+.BR "which gg" :
+.PP
+.nf
+.RS
+{
+  "hooks": {
+    "SessionStart":     [{ "hooks": [{ "type": "command", "command": "/path/to/gg hook" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/path/to/gg hook" }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "/path/to/gg hook" }] }]
+  }
+}
+.RE
+.fi
+.PP
+Status line, where
+.B $dir
+is the session's working directory:
+.PP
+.nf
+.RS
+line=$(gg line "$dir") && [ \-n "$line" ] && printf '%s\en' "$line"
+.RE
+.fi

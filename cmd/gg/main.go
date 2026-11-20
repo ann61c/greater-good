@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,6 +24,31 @@ When the user gives you work that will take over 30 minutes, runs in background 
   gg park <id> "<note>"     gg done <id>     gg status     gg log
 Budget is the most time the item is worth to the user. When the user states or changes priorities, run ` + "`gg rank`" + ` right away.
 After adding or re-ranking, tell the user the order and budgets in one line. Only the user extends a budget (then run ` + "`gg budget <id> <dur>`" + `).`
+
+const help = `gg: a priority ledger and a budget clock for coding agents.
+
+Usage:
+  gg add <id> "<title>" --why "<text>" --budget <dur>
+                             add an item at the bottom of the ranking
+  gg rank <id> <id> ...      move these items to the top, in this order
+  gg start <id>              start the clock; one active item at a time
+  gg park <id> "<note>"      stop the clock, keep a hand-over note
+  gg done <id>               close an item
+  gg budget <id> <dur>       set an item's budget
+  gg status                  what the agent sees
+  gg line [dir]              the status line row
+  gg log                     history: what was started, parked, re-ranked, and when
+  gg hook                    Claude Code hook; reads the event JSON on stdin
+  gg help                    this text
+  gg man                     the man page, as roff
+
+Durations look like 2h, 90m or 1h30m.
+Ledgers are JSON files in ~/.greater-good/, one per git repository. GG_HOME overrides the directory.
+Full manual: man gg
+`
+
+//go:embed gg.1
+var manPage string
 
 const layout = "2006-01-02T15:04:05"
 
@@ -282,10 +308,17 @@ func hook() {
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
-		die("usage: gg add|rank|start|park|done|budget|status|log|line|hook")
+		args = []string{"help"}
 	}
 	cmd, args := args[0], args[1:]
-	if cmd == "hook" {
+	switch cmd {
+	case "help", "-h", "--help":
+		fmt.Print(help)
+		return
+	case "man":
+		fmt.Print(manPage)
+		return
+	case "hook":
 		hook()
 		return
 	}

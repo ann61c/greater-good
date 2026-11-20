@@ -268,3 +268,34 @@ func TestUnderBudget(t *testing.T) {
 		t.Errorf("unexpected OVER BUDGET:\n%s", out)
 	}
 }
+
+func TestHelp(t *testing.T) {
+	e := newEnv(t)
+	want, code := e.gg(t0)
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	for _, a := range []string{"help", "-h", "--help"} {
+		out, code := e.gg(t0, a)
+		if code != 0 || out != want {
+			t.Errorf("%s: exit %d, output differs", a, code)
+		}
+	}
+	has(t, want, "gg add", "gg rank", "gg start", "gg park", "gg done", "gg budget",
+		"gg status", "gg line", "gg log", "gg hook", "gg help", "gg man")
+}
+
+func TestMan(t *testing.T) {
+	e := newEnv(t)
+	out, code := e.gg(t0, "man")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	b, _ := os.ReadFile("gg.1")
+	if out != string(b) {
+		t.Error("gg man differs from gg.1")
+	}
+	if !strings.HasPrefix(out, ".TH GG 1") {
+		t.Errorf("bad start: %q", out[:20])
+	}
+}

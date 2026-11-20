@@ -53,6 +53,12 @@ Projects with no open items get no output at all.
 go install github.com/ann61c/greater-good/cmd/gg@latest
 ```
 
+Install the man page into any directory on your `MANPATH`. On Homebrew:
+
+```sh
+gg man > "$(brew --prefix)/share/man/man1/gg.1"
+```
+
 Add the hooks to `~/.claude/settings.json`, using the full path from `which gg`:
 
 ```json
@@ -87,6 +93,8 @@ gg budget <id> <dur>       extend or shrink a budget
 gg status                  what the agent sees
 gg line [dir]              the status line row
 gg log                     history: what was started, parked, re-ranked, and when
+gg help                    this list
+gg man                     the man page, as roff
 ```
 
 Ledgers are JSON files in `~/.greater-good/`, one per project. Git worktrees of a repository share one ledger.
