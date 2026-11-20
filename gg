@@ -87,6 +87,20 @@ def status(led):
     return "\n".join(out + [RULES])
 
 
+def line(led):
+    out = []
+    for n, i in enumerate(live(led), 1):
+        t = f"#{i['id']} {i['title'][:20]}"
+        if i["status"] == "active":
+            c = "1;31" if over(i) else "1"
+            out.append(f"\033[{c}m{n}▶ {t} {fmt(elapsed(i))}/{fmt(i['budget_s'])}{' OVER' if over(i) else ''}\033[0m")
+        elif i["status"] == "parked":
+            out.append(f"\033[2m{n} {t} (parked)\033[0m")
+        else:
+            out.append(f"{n} {t}")
+    return " · ".join(out)
+
+
 def hook(a):
     d = json.load(sys.stdin)
     led = load(path(d["cwd"]))
@@ -113,7 +127,7 @@ def main():
     p = argparse.ArgumentParser()
     s = p.add_subparsers(dest="cmd", required=True)
     for name, args in [("add", ["id", "title"]), ("rank", ["ids*"]), ("start", ["id"]), ("park", ["id", "note"]),
-                       ("done", ["id"]), ("budget", ["id", "dur"]), ("status", []), ("log", []), ("hook", [])]:
+                       ("done", ["id"]), ("budget", ["id", "dur"]), ("status", []), ("log", []), ("line", ["dir*"]), ("hook", [])]:
         sp = s.add_parser(name)
         for x in args:
             sp.add_argument(x.rstrip("*"), nargs="*" if x.endswith("*") else None)
@@ -123,11 +137,11 @@ def main():
     a = p.parse_args()
     if a.cmd == "hook":
         return hook(a)
-    pth = path(os.getcwd())
+    pth = path(a.dir[0] if a.cmd == "line" and a.dir else os.getcwd())
     led = load(pth)
-    if a.cmd in ("status", "log"):
+    if a.cmd in ("status", "log", "line"):
         if led and (a.cmd == "log" or live(led)):
-            print(status(led) if a.cmd == "status" else "\n".join(f"{e['at']} {e['event']} #{e['id']} {e['detail']}" for e in led["events"]))
+            print({"status": status, "line": line}[a.cmd](led) if a.cmd != "log" else "\n".join(f"{e['at']} {e['event']} #{e['id']} {e['detail']}" for e in led["events"]))
         return
     led = led or {"items": [], "events": []}
     get = lambda i: next(x for x in led["items"] if x["id"] == i)

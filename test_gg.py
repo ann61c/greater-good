@@ -102,6 +102,23 @@ class Tests(Base):
         self.assertNotIn("[greater-good] 20", out)
         self.assertEqual(self.gg("status").stdout, "")
 
+    def test_line(self):
+        self.seed()
+        out = self.gg("line", now=self.LATE).stdout
+        for s in ("3▶ #896", "9h46m/1h OVER", "\033[1;31m"):
+            self.assertIn(s, out)
+        self.assertLess(out.index("1 #900"), out.index("2 #890"))
+
+    def test_line_dir(self):
+        other = os.path.join(self.tmp.name, "other")
+        os.mkdir(other)
+        self.assertEqual(self.gg("line", self.repo, cwd=other).stdout, "")
+        self.seed()
+        self.assertIn("#896", self.gg("line", self.repo, cwd=other).stdout)
+        for i in ("896", "900", "890"):
+            self.gg("done", i)
+        self.assertEqual(self.gg("line", self.repo, cwd=other).stdout, "")
+
     def test_under_budget(self):
         self.seed()
         now = "2026-11-19T15:30:00"
