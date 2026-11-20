@@ -36,7 +36,8 @@ Usage:
   gg done <id>               close an item
   gg budget <id> <dur>       set an item's budget
   gg status                  what the agent sees
-  gg line [dir]              the status line row
+  gg line [dir] [--session <id>]
+                             the status line row
   gg log                     history: what was started, parked, re-ranked, and when
   gg hook                    Claude Code hook; reads the event JSON on stdin
   gg help                    this text
@@ -160,6 +161,25 @@ func load(p string) *Ledger {
 	return l
 }
 
+// ledger finds the ledger for dir. A session remembers the last ledger it saw,
+// so it still finds it when dir leaves the repository.
+func ledger(dir, session string) (string, *Ledger) {
+	p := path(dir)
+	l := load(p)
+	if session == "" {
+		return p, l
+	}
+	b := filepath.Join(filepath.Dir(p), "sessions", filepath.Base(session))
+	if l != nil {
+		os.MkdirAll(filepath.Dir(b), 0o755)
+		os.WriteFile(b, []byte(p), 0o644)
+	} else if bp, err := os.ReadFile(b); err == nil {
+		p = string(bp)
+		l = load(p)
+	}
+	return p, l
+}
+
 func save(p string, l *Ledger) {
 	b, _ := json.MarshalIndent(l, "", "  ")
 	os.MkdirAll(filepath.Dir(p), 0o755)
@@ -264,10 +284,11 @@ func hook() {
 	var d struct {
 		Event  string `json:"hook_event_name"`
 		Cwd    string `json:"cwd"`
+		Sess   string `json:"session_id"`
 		Active bool   `json:"stop_hook_active"`
 	}
 	json.NewDecoder(os.Stdin).Decode(&d)
-	l := load(path(d.Cwd))
+	_, l := ledger(d.Cwd, d.Sess)
 	switch {
 	case d.Event == "SessionStart":
 		fmt.Println(usage)
@@ -323,11 +344,18 @@ func main() {
 		return
 	}
 	dir, _ := os.Getwd()
-	if cmd == "line" && len(args) > 0 {
-		dir = args[0]
+	session := ""
+	if cmd == "line" {
+		for i := 0; i < len(args); i++ {
+			if args[i] == "--session" && i+1 < len(args) {
+				i++
+				session = args[i]
+			} else {
+				dir = args[i]
+			}
+		}
 	}
-	p := path(dir)
-	l := load(p)
+	p, l := ledger(dir, session)
 	switch cmd {
 	case "status", "line":
 		if l != nil && len(live(l)) > 0 {

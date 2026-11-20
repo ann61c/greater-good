@@ -299,3 +299,65 @@ func TestMan(t *testing.T) {
 		t.Errorf("bad start: %q", out[:20])
 	}
 }
+
+func (e *env) sessionHook(cwd, event, session, now string) string {
+	b, _ := json.Marshal(map[string]any{"hook_event_name": event, "cwd": cwd, "session_id": session})
+	out, _ := e.run(cwd, now, string(b), "hook")
+	return out
+}
+
+func TestSessionPromptOutsideRepo(t *testing.T) {
+	e := newEnv(t)
+	e.seed()
+	want := e.sessionHook(e.repo, "UserPromptSubmit", "S", late)
+	has(t, want, "#896")
+	if got := e.sessionHook(e.tmp, "UserPromptSubmit", "S", late); got != want {
+		t.Errorf("outside status differs:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestSessionStopOutsideRepo(t *testing.T) {
+	e := newEnv(t)
+	e.seed()
+	e.sessionHook(e.repo, "UserPromptSubmit", "S", late)
+	has(t, e.sessionHook(e.tmp, "Stop", "S", late), `"decision":"block"`, "896")
+}
+
+func TestSessionLineOutsideRepo(t *testing.T) {
+	e := newEnv(t)
+	e.seed()
+	e.run(e.tmp, late, "", "line", e.repo, "--session", "S")
+	out, _ := e.run(e.tmp, late, "", "line", e.tmp, "--session", "S")
+	has(t, out, "#896")
+}
+
+func TestSessionRebinds(t *testing.T) {
+	e := newEnv(t)
+	e.seed()
+	two := filepath.Join(e.tmp, "two")
+	os.Mkdir(two, 0o755)
+	e.git(two, "init", "-q")
+	e.run(two, t0, "", "add", "77", "Second", "--why", "w", "--budget", "1h")
+	e.sessionHook(e.repo, "UserPromptSubmit", "S", late)
+	out := e.sessionHook(two, "UserPromptSubmit", "S", late)
+	has(t, out, "#77")
+	out, _ = e.run(two, late, "", "line", two, "--session", "S")
+	has(t, out, "#77")
+	out = e.sessionHook(e.tmp, "UserPromptSubmit", "S", late)
+	has(t, out, "#77")
+	if strings.Contains(out, "#896") {
+		t.Errorf("outside session still shows first ledger:\n%s", out)
+	}
+}
+
+func TestSessionUnknownOrMissing(t *testing.T) {
+	e := newEnv(t)
+	e.seed()
+	e.sessionHook(e.repo, "UserPromptSubmit", "S", late)
+	empty(t, e.sessionHook(e.tmp, "UserPromptSubmit", "other", late))
+	empty(t, e.sessionHook(e.tmp, "UserPromptSubmit", "", late))
+	out, _ := e.run(e.tmp, late, "", "line", e.tmp, "--session", "other")
+	empty(t, out)
+	out, _ = e.run(e.tmp, late, "", "line", e.tmp)
+	empty(t, out)
+}

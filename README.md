@@ -71,11 +71,13 @@ Add the hooks to `~/.claude/settings.json`, using the full path from `which gg`:
 }
 ```
 
-Show the ranking in your status line by adding this to your status line script, where `$dir` is the session's working directory:
+Show the ranking in your status line by adding this to your status line script, where `$dir` is the session's working directory and `$session_id` is the `session_id` field of the status line input:
 
 ```sh
-line=$(gg line "$dir") && [ -n "$line" ] && printf '%s\n' "$line"
+line=$(gg line "$dir" --session "$session_id") && [ -n "$line" ] && printf '%s\n' "$line"
 ```
+
+A session remembers the last ledger it saw, so the status line and hooks keep working when the session's directory leaves the repository. A directory with its own ledger takes over.
 
 `gg` must be on the agent's `PATH`. New sessions pick up the hooks.
 
@@ -91,7 +93,8 @@ gg park <id> "<note>"      stop the clock, keep a hand-over note
 gg done <id>
 gg budget <id> <dur>       extend or shrink a budget
 gg status                  what the agent sees
-gg line [dir]              the status line row
+gg line [dir] [--session <id>]
+                           the status line row
 gg log                     history: what was started, parked, re-ranked, and when
 gg help                    this list
 gg man                     the man page, as roff
