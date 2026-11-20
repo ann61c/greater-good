@@ -1,7 +1,18 @@
 import json, os, subprocess, tempfile, unittest
 
-GG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gg")
+SRC = os.path.dirname(os.path.abspath(__file__))
 T = "2026-11-19T15:00:00"
+
+
+def setUpModule():
+    global BUILD, GG
+    BUILD = tempfile.TemporaryDirectory()
+    GG = os.path.join(BUILD.name, "gg")
+    subprocess.run(["go", "build", "-o", GG, "./cmd/gg"], cwd=SRC, check=True)
+
+
+def tearDownModule():
+    BUILD.cleanup()
 
 
 class Base(unittest.TestCase):
@@ -118,6 +129,11 @@ class Tests(Base):
         for i in ("896", "900", "890"):
             self.gg("done", i)
         self.assertEqual(self.gg("line", self.repo, cwd=other).stdout, "")
+
+    def test_missing_cwd(self):
+        r = self.gg("hook", stdin=json.dumps(dict(hook_event_name="SessionStart", cwd="/nonexistent/x")))
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("the user never runs gg", r.stdout)
 
     def test_under_budget(self):
         self.seed()
